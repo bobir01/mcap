@@ -652,14 +652,15 @@ var mergeCmd = &cobra.Command{
 		if mergeOutputFile == "" && !utils.StdoutRedirected() {
 			die(PleaseRedirect)
 		}
+		ctx := context.Background()
 		var readers []namedReader
 		for _, arg := range args {
-			f, err := os.Open(arg)
+			closeReader, rs, err := utils.GetReader(ctx, arg)
 			if err != nil {
 				die("failed to open %s: %s\n", arg, err)
 			}
-			defer f.Close()
-			readers = append(readers, namedReader{name: arg, reader: f})
+			defer closeReader() //nolint:errcheck
+			readers = append(readers, namedReader{name: arg, reader: rs})
 		}
 
 		if mergeCompression == compressionNoneAlias {
