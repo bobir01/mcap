@@ -132,3 +132,23 @@ func (r *S3ReadSeekCloser) Seek(offset int64, whence int) (int64, error) {
 func (r *S3ReadSeekCloser) Close() error {
 	return r.reader.Close()
 }
+
+// ReadRange issues a single closed-range GET (bytes=start-(end-1)) and returns
+// the response body. The caller must Close() the returned ReadCloser.
+// Using a closed range lets Go fully drain the response and return the
+// underlying TCP connection to the pool — avoiding a new TLS handshake per call.
+func (r *S3ReadSeekCloser) ReadRange(start, end int64) (io.ReadCloser, error) {
+	if start >= end || start < 0 || end > r.size {
+		return nil, fmt.Errorf("ReadRange: invalid range [%d, %d) for size %d", start, end, r.size)
+	}
+	rangeHeader := fmt.Sprintf("bytes=%d-%d", start, end-1)
+	resp, err := r.client.GetObject(r.ctx, &s3.GetObjectInput{
+		Bucket: &r.bucket,
+		Key:    &r.key,
+		Range:  aws.String(rangeHeader),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ReadRange GetObject: %w", err)
+	}
+	return resp.Body, nil
+}
